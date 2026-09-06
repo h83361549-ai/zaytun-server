@@ -1,93 +1,109 @@
-// db.js — پایگاه‌داده‌ی ساده روی فایل JSON
-// عمداً از هیچ ماژول native (مثل better-sqlite3) استفاده نشده تا رو هر
-// ویندوزی بدون نیاز به نصب ابزار کامپایل (Python, Visual Studio Build Tools) کار کنه.
+// db.js — اتصال به پایگاه‌داده‌ی PostgreSQL (رایگان روی Render)
+// آدرس اتصال از متغیر محیطی DATABASE_URL خونده میشه.
 
-const fs = require("fs");
-const path = require("path");
+const { Pool } = require("pg");
 
-const DATA_FILE = path.join(__dirname, "zaytun-data.json");
+const pool = new Pool({
+  connectionString: process.env.DATABASE_URL,
+  ssl: process.env.DATABASE_URL ? { rejectUnauthorized: false } : false,
+});
 
-function load() {
-  if (!fs.existsSync(DATA_FILE)) {
-    const initial = { users: [], messages: [], nextUserId: 1, nextMessageId: 1 };
-    fs.writeFileSync(DATA_FILE, JSON.stringify(initial, null, 2));
-    return initial;
-  }
-  const raw = fs.readFileSync(DATA_FILE, "utf-8");
-  try {
-    return JSON.parse(raw);
-  } catch {
-    const initial = { users: [], messages: [], nextUserId: 1, nextMessageId: 1 };
-    fs.writeFileSync(DATA_FILE, JSON.stringify(initial, null, 2));
-    return initial;
-  }
+async function init() {
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS users (
+      id SERIAL PRIMARY KEY,
+      username TEXT UNIQUE NOT NULL,
+      display_name TEXT NOT NULL,
+      password_hash TEXT NOT NULL,
+      avatar_color TEXT NOT NULL,
+      created_at BIGINT NOT NULL
+    );
+  `);
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS messages (
+      id SERIAL PRIMARY KEY,
+      sender_id INTEGER NOT NULL REFERENCES users(id),
+      receiver_id INTEGER NOT NULL REFERENCES users(id),
+      content TEXT NOT NULL,
+      created_at BIGINT NOT NULL
+    );
+  `);
+  await pool.query(`CREATE INDEX IF NOT EXISTS idx_messages_pair ON messages(sender_id, receiver_id);`);
+  console.log("🗄️  پایگاه‌داده آماده است.");
 }
 
-function save(data) {
-  fs.writeFileSync(DATA_FILE, JSON.stringify(data, null, 2));
+function rowToUser(row) {
+  if (!row) return null;
+  return {
+    id: row.id,
+    username: row.username,
+    displayName: row.display_name,
+    passwordHash: row.password_hash,
+    avatarColor: row.avatar_color,
+    createdAt: Number(row.created_at),
+  };
+}
+
+function rowToMessage(row) {
+  return {
+    id: row.id,
+    senderId: row.sender_id,
+    receiverId: row.receiver_id,
+    content: row.content,
+    createdAt: Number(row.created_at),
+  };
 }
 
 // ---------- کاربران ----------
-function findUserByUsername(username) {
-  const data = load();
-  return data.users.find((u) => u.username === username) || null;
+async function findUserByUsername(username) {
+  const { rows } = await pool.query("SELECT * FROM users WHERE username = $1", [username]);
+  return rowToUser(rows[0]);
 }
 
-function findUserById(id) {
-  const data = load();
-  return data.users.find((u) => u.id === id) || null;
+async function findUserById(id) {
+  const { rows } = await pool.query("SELECT * FROM users WHERE id = $1", [id]);
+  return rowToUser(rows[0]);
 }
 
-function createUser({ username, displayName, passwordHash, avatarColor }) {
-  const data = load();
-  const user = {
-    id: data.nextUserId++,
-    username,
-    displayName,
-    passwordHash,
-    avatarColor,
-    createdAt: Date.now(),
-  };
-  data.users.push(user);
-  save(data);
-  return user;
+async function createUser({ username, displayName, passwordHash, avatarColor }) {
+  const { rows } = await pool.query(
+    `INSERT INTO users (username, display_name, password_hash, avatar_color, created_at)
+     VALUES ($1, $2, $3, $4, $5) RETURNING *`,
+    [username, displayName, passwordHash, avatarColor, Date.now()]
+  );
+  return rowToUser(rows[0]);
 }
 
-function listUsersExcept(userId) {
-  const data = load();
-  return data.users
-    .filter((u) => u.id !== userId)
-    .sort((a, b) => a.displayName.localeCompare(b.displayName));
+async function listUsersExcept(userId) {
+  const { rows } = await pool.query(
+    "SELECT * FROM users WHERE id != $1 ORDER BY display_name",
+    [userId]
+  );
+  return rows.map(rowToUser);
 }
 
 // ---------- پیام‌ها ----------
-function insertMessage({ senderId, receiverId, content }) {
-  const data = load();
-  const message = {
-    id: data.nextMessageId++,
-    senderId,
-    receiverId,
-    content,
-    createdAt: Date.now(),
-  };
-  data.messages.push(message);
-  save(data);
-  return message;
+async function insertMessage({ senderId, receiverId, content }) {
+  const { rows } = await pool.query(
+    `INSERT INTO messages (sender_id, receiver_id, content, created_at)
+     VALUES ($1, $2, $3, $4) RETURNING *`,
+    [senderId, receiverId, content, Date.now()]
+  );
+  return rowToMessage(rows[0]);
 }
 
-function getMessagesBetween(userId, otherId) {
-  const data = load();
-  return data.messages
-    .filter(
-      (m) =>
-        (m.senderId === userId && m.receiverId === otherId) ||
-        (m.senderId === otherId && m.receiverId === userId)
-    )
-    .sort((a, b) => a.createdAt - b.createdAt)
-    .slice(-200);
+async function getMessagesBetween(userId, otherId) {
+  const { rows } = await pool.query(
+    `SELECT * FROM messages
+     WHERE (sender_id = $1 AND receiver_id = $2) OR (sender_id = $2 AND receiver_id = $1)
+     ORDER BY created_at ASC LIMIT 200`,
+    [userId, otherId]
+  );
+  return rows.map(rowToMessage);
 }
 
 module.exports = {
+  init,
   findUserByUsername,
   findUserById,
   createUser,

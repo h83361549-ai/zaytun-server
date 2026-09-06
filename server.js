@@ -40,8 +40,15 @@ function authMiddleware(req, res, next) {
   }
 }
 
+function asyncRoute(fn) {
+  return (req, res) => fn(req, res).catch((err) => {
+    console.error(err);
+    res.status(500).json({ error: "خطای داخلی سرور" });
+  });
+}
+
 // ---------- مسیرهای ثبت‌نام / ورود ----------
-app.post("/api/register", (req, res) => {
+app.post("/api/register", asyncRoute(async (req, res) => {
   const { username, displayName, password } = req.body || {};
   if (!username || !password || !displayName) {
     return res.status(400).json({ error: "همه‌ی فیلدها را پر کنید" });
@@ -53,50 +60,50 @@ app.post("/api/register", (req, res) => {
   if (String(password).length < 4) {
     return res.status(400).json({ error: "رمز عبور باید حداقل ۴ حرف باشد" });
   }
-  const existing = db.findUserByUsername(cleanUsername);
+  const existing = await db.findUserByUsername(cleanUsername);
   if (existing) {
     return res.status(409).json({ error: "این نام کاربری قبلاً گرفته شده" });
   }
   const passwordHash = bcrypt.hashSync(password, 10);
   const avatarColor = AVATAR_COLORS[Math.floor(Math.random() * AVATAR_COLORS.length)];
-  const user = db.createUser({
+  const user = await db.createUser({
     username: cleanUsername,
     displayName: String(displayName).trim(),
     passwordHash,
     avatarColor,
   });
   return res.json({ ok: true, user: publicUser(user) });
-});
+}));
 
-app.post("/api/login", (req, res) => {
+app.post("/api/login", asyncRoute(async (req, res) => {
   const { username, password } = req.body || {};
   const cleanUsername = String(username || "").trim().toLowerCase();
-  const user = db.findUserByUsername(cleanUsername);
+  const user = await db.findUserByUsername(cleanUsername);
   if (!user || !bcrypt.compareSync(String(password || ""), user.passwordHash)) {
     return res.status(401).json({ error: "نام کاربری یا رمز عبور اشتباه است" });
   }
   const token = makeToken(user);
   return res.json({ ok: true, token, user: publicUser(user) });
-});
+}));
 
-app.get("/api/me", authMiddleware, (req, res) => {
-  const user = db.findUserById(req.user.id);
+app.get("/api/me", authMiddleware, asyncRoute(async (req, res) => {
+  const user = await db.findUserById(req.user.id);
   if (!user) return res.status(404).json({ error: "کاربر پیدا نشد" });
   res.json({ user: publicUser(user) });
-});
+}));
 
 // لیست همه‌ی اعضای گروه (به‌جز خود کاربر)
-app.get("/api/users", authMiddleware, (req, res) => {
-  const rows = db.listUsersExcept(req.user.id);
+app.get("/api/users", authMiddleware, asyncRoute(async (req, res) => {
+  const rows = await db.listUsersExcept(req.user.id);
   res.json({ users: rows.map(publicUser) });
-});
+}));
 
 // تاریخچه‌ی پیام بین من و یک کاربر دیگر
-app.get("/api/messages/:otherId", authMiddleware, (req, res) => {
+app.get("/api/messages/:otherId", authMiddleware, asyncRoute(async (req, res) => {
   const otherId = Number(req.params.otherId);
-  const rows = db.getMessagesBetween(req.user.id, otherId);
+  const rows = await db.getMessagesBetween(req.user.id, otherId);
   res.json({ messages: rows });
-});
+}));
 
 app.get("/", (_req, res) => res.send("Zaytun server is running."));
 
@@ -122,18 +129,21 @@ io.on("connection", (socket) => {
   onlineUsers.set(socket.userId, socket.id);
   io.emit("presence", { userId: socket.userId, online: true });
 
-  socket.on("dm", ({ toUserId, content }) => {
+  socket.on("dm", async ({ toUserId, content }) => {
     const text = String(content || "").trim();
     if (!text || !toUserId) return;
-    const message = db.insertMessage({
-      senderId: socket.userId,
-      receiverId: toUserId,
-      content: text,
-    });
-
-    const targetSocketId = onlineUsers.get(toUserId);
-    if (targetSocketId) io.to(targetSocketId).emit("dm", message);
-    socket.emit("dm", message); // اکو به فرستنده برای همگام‌سازی
+    try {
+      const message = await db.insertMessage({
+        senderId: socket.userId,
+        receiverId: toUserId,
+        content: text,
+      });
+      const targetSocketId = onlineUsers.get(toUserId);
+      if (targetSocketId) io.to(targetSocketId).emit("dm", message);
+      socket.emit("dm", message); // اکو به فرستنده برای همگام‌سازی
+    } catch (err) {
+      console.error("خطا در ذخیره پیام:", err);
+    }
   });
 
   socket.on("typing", ({ toUserId }) => {
@@ -149,6 +159,13 @@ io.on("connection", (socket) => {
   socket.emit("online-list", Array.from(onlineUsers.keys()));
 });
 
-server.listen(PORT, () => {
-  console.log(`✅ Zaytun server در حال اجرا روی پورت ${PORT}`);
-});
+db.init()
+  .then(() => {
+    server.listen(PORT, () => {
+      console.log(`✅ Zaytun server در حال اجرا روی پورت ${PORT}`);
+    });
+  })
+  .catch((err) => {
+    console.error("❌ اتصال به پایگاه‌داده ناموفق بود:", err);
+    process.exit(1);
+  });
