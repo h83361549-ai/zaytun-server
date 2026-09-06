@@ -105,6 +105,27 @@ app.get("/api/messages/:otherId", authMiddleware, asyncRoute(async (req, res) =>
   res.json({ messages: rows });
 }));
 
+// حذف حساب خودم (نیاز به تایید رمز عبور فعلی)
+app.delete("/api/account", authMiddleware, asyncRoute(async (req, res) => {
+  const { password } = req.body || {};
+  const user = await db.findUserById(req.user.id);
+  if (!user) return res.status(404).json({ error: "کاربر پیدا نشد" });
+  if (!bcrypt.compareSync(String(password || ""), user.passwordHash)) {
+    return res.status(401).json({ error: "رمز عبور اشتباه است" });
+  }
+  await db.deleteAccount(req.user.id);
+  res.json({ ok: true });
+}));
+
+// پاک کردن کامل همه‌ی داده‌ها — فقط برای تست اولیه، نیاز به کلید مخفی داره
+app.get("/api/admin/wipe", asyncRoute(async (req, res) => {
+  if (!process.env.ADMIN_KEY || req.query.key !== process.env.ADMIN_KEY) {
+    return res.status(403).send("غیرمجاز");
+  }
+  await db.wipeAll();
+  res.send("همه‌ی حساب‌ها و پیام‌ها پاک شدند.");
+}));
+
 app.get("/", (_req, res) => res.send("Zaytun server is running."));
 
 // ---------- Socket.io ----------

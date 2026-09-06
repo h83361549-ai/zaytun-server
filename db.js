@@ -102,6 +102,17 @@ async function getMessagesBetween(userId, otherId) {
   return rows.map(rowToMessage);
 }
 
+// ---------- حذف ----------
+async function deleteAccount(userId) {
+  await pool.query("DELETE FROM messages WHERE sender_id = $1 OR receiver_id = $1", [userId]);
+  await pool.query("DELETE FROM users WHERE id = $1", [userId]);
+}
+
+async function wipeAll() {
+  await pool.query("TRUNCATE TABLE messages RESTART IDENTITY;");
+  await pool.query("TRUNCATE TABLE users RESTART IDENTITY CASCADE;");
+}
+
 module.exports = {
   init,
   findUserByUsername,
@@ -110,4 +121,6 @@ module.exports = {
   listUsersExcept,
   insertMessage,
   getMessagesBetween,
+  deleteAccount,
+  wipeAll,
 };
