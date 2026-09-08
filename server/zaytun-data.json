@@ -1,0 +1,68 @@
+{
+  "users": [
+    {
+      "id": 1,
+      "username": "hooman751",
+      "displayName": "هومن",
+      "passwordHash": "$2a$10$aRbBj2qHGtqOz8nT1rWA1.g2Nw8KMErNZouDwfFK7L9uG1YVjMnT2",
+      "avatarColor": "#a3b565",
+      "createdAt": 1788631765408
+    },
+    {
+      "id": 2,
+      "username": "sina751",
+      "displayName": "سینا",
+      "passwordHash": "$2a$10$TfsqHr0vuBrv.fJSVfKhSOdV8CoRd1VRwpVyDEA0oHz.YzC/ipI0a",
+      "avatarColor": "#8a9a4a",
+      "createdAt": 1788631832079
+    },
+    {
+      "id": 3,
+      "username": "sina789",
+      "displayName": "sina",
+      "passwordHash": "$2a$10$0p4M0Yd4uguP9S/kT8tOL.Jxr.52q5Vm5I9hrcJkmPz4H2CrrnoyW",
+      "avatarColor": "#a3b565",
+      "createdAt": 1788633950328
+    },
+    {
+      "id": 4,
+      "username": "nar",
+      "displayName": "nar",
+      "passwordHash": "$2a$10$OfKR4ZUxYCvzupAnduEIBee55XShRoLZdvgzPTZpGsrAKeuFP/poK",
+      "avatarColor": "#8a9a4a",
+      "createdAt": 1788634108547
+    }
+  ],
+  "messages": [
+    {
+      "id": 1,
+      "senderId": 2,
+      "receiverId": 1,
+      "content": "سلاممم",
+      "createdAt": 1788631850274
+    },
+    {
+      "id": 2,
+      "senderId": 3,
+      "receiverId": 1,
+      "content": "سلام",
+      "createdAt": 1788634077629
+    },
+    {
+      "id": 3,
+      "senderId": 4,
+      "receiverId": 3,
+      "content": "sghl",
+      "createdAt": 1788634138205
+    },
+    {
+      "id": 4,
+      "senderId": 3,
+      "receiverId": 4,
+      "content": "سلام",
+      "createdAt": 1788634164640
+    }
+  ],
+  "nextUserId": 5,
+  "nextMessageId": 5
+}
